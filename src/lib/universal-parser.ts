@@ -2,6 +2,7 @@ import { parseOFX } from './ofx-parser';
 import { parseCSVText, detectColumns, applyMapping } from './csv-parser';
 import type { CSVColumnMapping } from './csv-parser';
 import { read as xlsxRead, utils as xlsxUtils } from 'xlsx';
+import { parsePDFToRows } from './pdf-parser';
 
 export type FileFormat = 'ofx' | 'csv' | 'xlsx' | 'txt' | 'pdf' | 'unknown';
 
@@ -62,13 +63,18 @@ export async function parseFile(file: File): Promise<ParsedSource> {
   const format = detectFormat(file.name);
 
   if (format === 'pdf') {
-    return {
-      tempId,
-      fileName: file.name,
-      format: 'pdf',
-      transactions: [],
-      needsMapping: false,
-    };
+    const { headers, rows } = await parsePDFToRows(file);
+    if (headers.length === 0) {
+      return { tempId, fileName: file.name, format: 'pdf', transactions: [], needsMapping: false };
+    }
+    const detected = detectColumns(headers);
+    const autoOk = !!detected.dateColumn && !!detected.amountColumn && !!detected.descriptionColumn;
+    if (!autoOk) {
+      return { tempId, fileName: file.name, format: 'pdf', transactions: [], needsMapping: true, headers, rows, detectedMapping: detected };
+    }
+    const mapped = applyMapping(rows, detected as CSVColumnMapping);
+    const txs = mapped.map((t) => ({ id: t.id, sourceId: tempId, postedAt: t.postedAt, amount: t.amount, description: t.description, rawData: t.rawData }));
+    return { tempId, fileName: file.name, format: 'pdf', transactions: txs, needsMapping: false };
   }
 
   if (format === 'ofx') {

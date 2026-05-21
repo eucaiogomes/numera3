@@ -286,7 +286,7 @@ function Index() {
           <input
             ref={fileInputRef}
             type="file"
-            accept=".ofx,.qfx,.csv,.xlsx,.xls,.txt"
+            accept=".ofx,.qfx,.csv,.xlsx,.xls,.txt,.pdf"
             multiple
             className="hidden"
             onChange={handleFileSelect}
@@ -296,7 +296,7 @@ function Index() {
             {isDragging ? 'Solte os arquivos aqui' : 'Arraste arquivos ou clique para selecionar'}
           </p>
           <p className="text-[11.5px] text-gray-400 mt-1">
-            Suporta .ofx, .csv, .xlsx, .txt · Qualquer quantidade de fontes
+            Suporta .ofx, .csv, .xlsx, .txt, .pdf · Qualquer quantidade de fontes
           </p>
         </div>
 
