@@ -95,7 +95,7 @@ async function callAnthropic(prompt: string, apiKey: string): Promise<AnalysisRe
 }
 
 export const analyzeDivergencesBatch = createServerFn({ method: 'POST' })
-  .validator((data: unknown) => data as { divergences: DivergenceInput[]; period: string; sourceLabels: string[] })
+  .inputValidator((data: unknown) => data as { divergences: DivergenceInput[]; period: string; sourceLabels: string[] })
   .handler(async ({ data }) => {
     const { divergences, period, sourceLabels } = data;
     const groqKey = process.env.GROQ_API_KEY;
