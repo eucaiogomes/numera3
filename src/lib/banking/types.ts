@@ -185,7 +185,7 @@ export type BankingReviewItemKind =
   | 'suggested_entry'
   | 'insufficient_data';
 
-export type BankingReviewItemStatus = 'open' | 'done' | 'ignored';
+export type BankingReviewItemStatus = 'open' | 'approved' | 'done' | 'ignored';
 
 export interface BankingReviewItem {
   id: string;

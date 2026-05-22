@@ -32,6 +32,13 @@ function accountLabel(result: BalanceReconciliationResult): string {
   return `${result.accountCode} - ${result.accountName}`;
 }
 
+function suggestedEntryTitle(history: string): string {
+  const normalized = history.toLowerCase();
+  if (normalized.includes('ir sobre')) return 'Aprovar lancamento de IR';
+  if (normalized.includes('rendimento')) return 'Aprovar lancamento de rendimento';
+  return 'Aprovar lancamento sugerido';
+}
+
 function missingStatementTitle(result: BalanceReconciliationResult): string {
   if (result.accountKind === 'cash_investment') {
     return `Anexar extrato de aplicacao da conta ${accountLabel(result)}`;
@@ -127,7 +134,7 @@ export function buildBankingReviewItems(
         accountName: result.accountName,
         periodStart: result.periodStart,
         periodEnd: result.periodEnd,
-        title: `Aprovar lancamento: ${suggestedEntry.history}`,
+        title: suggestedEntryTitle(suggestedEntry.history),
         detail: `Debito: ${suggestedEntry.debitAccountCode ? `${suggestedEntry.debitAccountCode} - ` : ''}${suggestedEntry.debitAccountName}. Credito: ${suggestedEntry.creditAccountCode ? `${suggestedEntry.creditAccountCode} - ` : ''}${suggestedEntry.creditAccountName}. Valor: ${fmtCurrency(suggestedEntry.amount)}.`,
         amount: suggestedEntry.amount,
         dueDate: suggestedEntry.date,

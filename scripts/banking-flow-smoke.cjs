@@ -235,15 +235,15 @@ function cents(value) {
         item.dueDate === '2025-10-31',
     ),
   );
-  assert.ok(
-    reviewItems.some(
-      (item) =>
-        item.kind === 'suggested_entry' &&
-        item.accountCode === '5038' &&
-        item.dueDate === '2025-10-31' &&
-        item.suggestedEntryId === aplicacao.suggestedEntries[0].id,
-    ),
+  const suggestedReviewItem = reviewItems.find(
+    (item) =>
+      item.kind === 'suggested_entry' &&
+      item.accountCode === '5038' &&
+      item.dueDate === '2025-10-31' &&
+      item.suggestedEntryId === aplicacao.suggestedEntries[0].id,
   );
+  assert.ok(suggestedReviewItem);
+  assert.equal(suggestedReviewItem.title, 'Aprovar lancamento de rendimento');
   assert.ok(
     reviewItems.some(
       (item) =>
@@ -253,6 +253,17 @@ function cents(value) {
     ),
   );
   assert.ok(reviewItems.every((item) => item.status === 'open'));
+
+  const approvedReviewItems = buildBankingReviewItems(results, [
+    {
+      ...suggestedReviewItem,
+      status: 'approved',
+      note: 'Lancamento conferido pela equipe.',
+    },
+  ]);
+  const approvedItem = approvedReviewItems.find((item) => item.id === suggestedReviewItem.id);
+  assert.equal(approvedItem.status, 'approved');
+  assert.equal(approvedItem.note, 'Lancamento conferido pela equipe.');
 
   console.log('Fluxo bancario validado com sucesso.');
 })();

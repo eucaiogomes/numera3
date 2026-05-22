@@ -24,11 +24,13 @@ const KIND_LABEL: Record<BankingReviewItemKind, string> = {
 
 const STATUS_LABEL: Record<BankingReviewItemStatus, string> = {
   open: 'Pendente',
+  approved: 'Aprovada',
   done: 'Resolvida',
   ignored: 'Ignorada',
 };
 
 function statusStyle(status: BankingReviewItemStatus): string {
+  if (status === 'approved') return 'bg-emerald-50 text-emerald-700 border-emerald-200';
   if (status === 'done') return 'bg-emerald-50 text-emerald-700 border-emerald-200';
   if (status === 'ignored') return 'bg-gray-50 text-gray-600 border-gray-200';
   return 'bg-amber-50 text-amber-700 border-amber-200';
@@ -58,6 +60,8 @@ function ReviewItemCard({
   onUpdate: (id: string, patch: Partial<Pick<BankingReviewItem, 'status' | 'note'>>) => void;
 }) {
   const [note, setNote] = useState(item.note ?? '');
+  const isSuggestedEntry = item.kind === 'suggested_entry';
+  const isCompleted = item.status === 'done' || item.status === 'approved';
 
   return (
     <div className="border-t border-gray-100 first:border-t-0 py-4">
@@ -109,7 +113,7 @@ function ReviewItemCard({
             <Save className="w-3.5 h-3.5" />
             Salvar
           </button>
-          {item.status === 'done' ? (
+          {isCompleted ? (
             <button
               onClick={() => onUpdate(item.id, { status: 'open', note })}
               className="h-9 px-3 rounded-lg bg-amber-50 text-amber-700 text-[12px] font-medium flex items-center justify-center gap-1.5 hover:bg-amber-100 transition-colors"
@@ -119,11 +123,13 @@ function ReviewItemCard({
             </button>
           ) : (
             <button
-              onClick={() => onUpdate(item.id, { status: 'done', note })}
+              onClick={() =>
+                onUpdate(item.id, { status: isSuggestedEntry ? 'approved' : 'done', note })
+              }
               className="h-9 px-3 rounded-lg bg-emerald-600 text-white text-[12px] font-medium flex items-center justify-center gap-1.5 hover:bg-emerald-700 transition-colors"
             >
               <CheckCircle2 className="w-3.5 h-3.5" />
-              Resolver
+              {isSuggestedEntry ? 'Aprovar' : 'Resolver'}
             </button>
           )}
           {item.status !== 'ignored' && (
@@ -150,6 +156,7 @@ export function BankingReviewPanel({
 }) {
   const open = items.filter((item) => item.status === 'open').length;
   const done = items.filter((item) => item.status === 'done').length;
+  const approved = items.filter((item) => item.status === 'approved').length;
   const ignored = items.filter((item) => item.status === 'ignored').length;
 
   return (
@@ -169,6 +176,9 @@ export function BankingReviewPanel({
           </span>
           <span className="px-2 py-1 rounded-full bg-emerald-50 text-emerald-700">
             {done} resolvida(s)
+          </span>
+          <span className="px-2 py-1 rounded-full bg-emerald-50 text-emerald-700">
+            {approved} aprovada(s)
           </span>
           <span className="px-2 py-1 rounded-full bg-gray-50 text-gray-600">
             {ignored} ignorada(s)
