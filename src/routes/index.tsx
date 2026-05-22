@@ -51,6 +51,114 @@ type SimulatedResponse = {
 };
 
 const SIMULATED: Record<string, SimulatedResponse> = {
+  'Conciliar extrato bancário com lançamentos contábeis': {
+    title: 'Como funciona a conciliação bancária',
+    badge: 'Conciliação',
+    sections: [
+      {
+        heading: 'O que a Numera faz',
+        items: [
+          'Lê seu extrato bancário (.ofx, .csv ou .pdf) e o Razão Contábil do Questor',
+          'Cruza cada movimentação do banco com o lançamento contábil correspondente',
+          'Identifica datas, valores e históricos divergentes automaticamente',
+          'Gera um relatório com o status de cada conta: conciliado ✔ ou com diferença ✘',
+        ],
+      },
+      {
+        heading: 'Exemplo de resultado',
+        items: [
+          'Banco Itaú CC — Extrato R$ 48.320,00 · Razão R$ 48.320,00 · ✔ Conciliado',
+          'Banco Bradesco CC — Extrato R$ 12.450,00 · Razão R$ 11.900,00 · ✘ Diferença R$ 550,00',
+          'Origem provável: lançamento de tarifa bancária em 15/05 não registrado no Questor',
+        ],
+      },
+      {
+        text: '📎 Para rodar de verdade, anexe o Balancete, Razão Contábil e os Extratos bancários acima e clique em Enviar.',
+      },
+    ],
+  },
+  'Identificar lançamentos não conciliados': {
+    title: 'Lançamentos não conciliados — como identificar',
+    badge: 'Conciliação',
+    sections: [
+      {
+        heading: 'Causas mais comuns',
+        items: [
+          'Lançamento contábil registrado com data diferente da movimentação bancária',
+          'Valor divergente por arredondamento ou partição de pagamento',
+          'Transferência entre contas lançada em duplicidade no razão',
+          'Débito automático (tarifas, seguros) não lançado pelo contador',
+          'Cheque emitido mas ainda não compensado pelo banco',
+        ],
+      },
+      {
+        heading: 'Exemplo real identificado',
+        items: [
+          'Conta 1.1.1.01 — 3 lançamentos sem par no extrato (total R$ 2.340,00)',
+          'Conta 1.1.1.03 — 1 débito no extrato sem lançamento contábil (R$ 87,50 tarifa)',
+          'Ação sugerida: revisar competência dos lançamentos de 28 a 31/05',
+        ],
+      },
+      {
+        text: '📎 Envie os arquivos para a Numera identificar e listar automaticamente todos os lançamentos sem par.',
+      },
+    ],
+  },
+  'Analisar diferenças de conciliação': {
+    title: 'Análise de diferenças — causas e ações',
+    badge: 'Conciliação',
+    sections: [
+      {
+        heading: 'Tipos de diferença',
+        items: [
+          'Diferença de valor: mesmo lançamento, valores distintos no banco e no razão',
+          'Diferença de data: lançamento em competências diferentes (ex: virada de mês)',
+          'Lançamento a maior: duplicidade no razão contábil',
+          'Lançamento a menor: pagamento parcelado registrado como total',
+        ],
+      },
+      {
+        heading: 'Fluxo de análise sugerido',
+        items: [
+          '1. Filtrar diferenças acima de R$ 1.000 — maior risco de autuação',
+          '2. Verificar histórico do lançamento no Questor (descrição + CNPJ)',
+          '3. Cruzar com nota fiscal ou boleto correspondente',
+          '4. Ajustar via lançamento de estorno ou complemento',
+        ],
+      },
+      {
+        text: '📎 A Numera classifica cada diferença por tipo e prioridade assim que os arquivos são enviados.',
+      },
+    ],
+  },
+  'Gerar relatório de conciliação': {
+    title: 'Relatório de conciliação — o que é gerado',
+    badge: 'Conciliação',
+    sections: [
+      {
+        heading: 'Conteúdo do relatório',
+        items: [
+          'Status geral: conciliado ou com divergência por conta bancária',
+          'Saldo do extrato vs. saldo do razão com diferença em reais',
+          'Lista de lançamentos não conciliados com data, valor e descrição',
+          'Documentos faltantes que impedem a conciliação completa',
+          'Ações recomendadas numeradas por prioridade',
+        ],
+      },
+      {
+        heading: 'Exemplo de cabeçalho do relatório',
+        items: [
+          'Competência: Maio/2025',
+          'Contas analisadas: 4 · Conciliadas: 3 · Com diferença: 1',
+          'Maior diferença: Itaú CC R$ 1.240,00 — provável tarifa não lançada',
+          'Documentos faltantes: 0',
+        ],
+      },
+      {
+        text: '📎 Envie os arquivos e o relatório completo é gerado em segundos, pronto para revisar ou exportar.',
+      },
+    ],
+  },
   'Analisar obrigações fiscais acessórias': {
     title: 'Obrigações fiscais acessórias ativas',
     badge: 'Jurídico',
@@ -297,10 +405,10 @@ const TABS: Tab[] = [
     icon: Calculator,
     label: 'Conciliação',
     suggestions: [
-      { label: 'Conciliar extrato bancário com lançamentos contábeis', action: 'reconcile' },
-      { label: 'Identificar lançamentos não conciliados', action: 'reconcile' },
-      { label: 'Analisar diferenças de conciliação', action: 'reconcile' },
-      { label: 'Gerar relatório de conciliação', action: 'reconcile' },
+      { label: 'Conciliar extrato bancário com lançamentos contábeis', action: 'simulate' },
+      { label: 'Identificar lançamentos não conciliados', action: 'simulate' },
+      { label: 'Analisar diferenças de conciliação', action: 'simulate' },
+      { label: 'Gerar relatório de conciliação', action: 'simulate' },
     ],
   },
   {
@@ -848,12 +956,6 @@ function Index() {
               ))}
             </div>
 
-            {activeTab === 'conciliacao' && attachedFiles.length === 0 && (
-              <div className="px-4 pb-3 pt-1 flex items-center gap-1.5 text-[11px] text-gray-400">
-                <Banknote className="w-3 h-3 text-[#0d9488]" />
-                Anexe os arquivos acima para disparar a conciliação ao clicar em uma sugestão
-              </div>
-            )}
           </div>
         )}
       </div>
