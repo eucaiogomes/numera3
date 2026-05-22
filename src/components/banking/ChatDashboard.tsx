@@ -174,6 +174,62 @@ function PanelMethodology() {
   );
 }
 
+function DiverenceTable({ primary, difference }: { primary: BalanceReconciliationResult; difference: number }) {
+  const [open, setOpen] = useState(false);
+  const tableRows = [
+    ...primary.ledgerEntriesOnDivergenceDate.map((e) => ({
+      side: 'A', date: e.date, description: e.history, amount: e.amount, probable: false,
+    })),
+    ...primary.statementEntriesOnDivergenceDate.map((e) => ({
+      side: 'B', date: e.date, description: e.description, amount: e.amount,
+      probable: Math.abs(Math.abs(e.amount) - difference) <= 0.009,
+    })),
+  ];
+  if (tableRows.length === 0) return null;
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-gray-50 transition-colors"
+      >
+        <span className="text-[13px] font-semibold text-[#0a2520]">
+          Ver lançamentos do dia {fmtDate(primary.firstDivergentCheckpoint?.date)}
+        </span>
+        {open ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+      </button>
+      {open && (
+        <div className="overflow-x-auto border-t border-gray-100">
+          <table className="w-full min-w-[560px] text-left text-[12px]">
+            <thead>
+              <tr className="bg-gray-50 text-gray-400 text-[11px]">
+                <th className="px-4 py-2 font-semibold">Fonte</th>
+                <th className="px-3 py-2 font-semibold">Descrição</th>
+                <th className="px-3 py-2 font-semibold text-right">Valor</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {tableRows.map((row, i) => (
+                <tr key={i} className={row.probable ? 'bg-amber-50' : ''}>
+                  <td className="px-4 py-2">
+                    <span className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full ${row.side === 'A' ? 'bg-teal-50 text-teal-700' : 'bg-blue-50 text-blue-700'}`}>
+                      {row.side === 'A' ? 'Questor' : 'Extrato'}
+                      {row.probable && <span className="text-amber-600 ml-1">← provável</span>}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-gray-700 max-w-[280px] truncate">{row.description}</td>
+                  <td className={`px-3 py-2 text-right font-semibold tabular-nums ${row.amount < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                    {fmtCurrency(row.amount)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PanelFullReport({
   reconciliationId,
   results,
@@ -187,186 +243,179 @@ function PanelFullReport({
 }) {
   const caseData = getBankingReconciliation(reconciliationId);
   const primary = primaryResult(results);
-  const periods = results
-    .filter((r) => r.accountCode === primary?.accountCode && (r.periodStart || r.periodEnd))
-    .sort((a, b) => (a.periodStart ?? '').localeCompare(b.periodStart ?? ''));
   const difference = Math.abs(primary?.difference ?? 0);
-  const missing = results.filter((result) => result.status === 'missing_statement' || result.status === 'missing_ledger').length;
-  const open = reviewItems.filter((i) => i.status === 'open').length + missing;
-  const reconciled = results.filter((r) => r.status === 'reconciled').length;
+  const missingDocs = results.filter((r) => r.status === 'missing_statement' || r.status === 'missing_ledger');
+  const divergentResults = results.filter((r) => r.status === 'divergent');
+  const reconciledResults = results.filter((r) => r.status === 'reconciled');
+  const openItems = reviewItems.filter((i) => i.status === 'open');
+  const allGood = divergentResults.length === 0 && missingDocs.length === 0 && openItems.length === 0;
   const candidate = primary?.statementEntriesOnDivergenceDate.find(
-    (entry) => Math.abs(Math.abs(entry.amount) - difference) <= 0.009,
+    (e) => Math.abs(Math.abs(e.amount) - difference) <= 0.009,
   ) ?? primary?.statementEntriesOnDivergenceDate[0];
-  const tableRows = primary
-    ? [
-        ...primary.ledgerEntriesOnDivergenceDate.map((entry) => ({
-          side: 'A',
-          date: entry.date,
-          description: entry.history,
-          debit: entry.debit,
-          credit: entry.credit,
-          amount: entry.amount,
-          status: 'Questor',
-        })),
-        ...primary.statementEntriesOnDivergenceDate.map((entry) => ({
-          side: 'B',
-          date: entry.date,
-          description: entry.description,
-          debit: entry.amount < 0 ? Math.abs(entry.amount) : 0,
-          credit: entry.amount > 0 ? entry.amount : 0,
-          amount: entry.amount,
-          status: Math.abs(Math.abs(entry.amount) - difference) <= 0.009 ? 'Provável' : 'Extrato',
-        })),
-      ]
-    : [];
 
   return (
-    <div className="rounded-2xl border border-[#c8ded8] bg-[#eaf4f1] shadow-sm overflow-hidden">
-      <div className="border-b border-[#c8ded8] bg-gradient-to-br from-[#dff0ec] via-[#eef8f5] to-[#d8ebe6] px-5 py-4">
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <span className="rounded-full border border-[#9fd8cc] bg-[#dbf4ee] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#087568]">Relatório completo</span>
-          <span className="text-[11px] text-[#6f827d]">
-            Gerado {caseData ? `em ${new Date(caseData.createdAt).toLocaleString('pt-BR')}` : 'agora no workspace'}
-          </span>
-        </div>
-        <div className="flex items-end justify-between gap-4">
-          <div>
-            <h2 className="text-2xl font-bold text-[#0a2520]">Conciliação bancária</h2>
-            <p className="mt-1 text-[12.5px] text-[#6f827d]">{primary?.accountCode} - {primary?.accountName} · competência {fmtMonth(competence)}</p>
+    <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+
+      {/* Header */}
+      <div className={`px-5 py-4 border-b ${allGood ? 'bg-emerald-50 border-emerald-100' : 'bg-amber-50 border-amber-100'}`}>
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-3">
+            <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${allGood ? 'bg-emerald-100' : 'bg-amber-100'}`}>
+              {allGood
+                ? <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                : <AlertTriangle className="w-5 h-5 text-amber-600" />}
+            </div>
+            <div>
+              <p className={`text-[18px] font-bold leading-tight ${allGood ? 'text-emerald-800' : 'text-amber-900'}`}>
+                {allGood ? 'Conciliação concluída' : `${divergentResults.length > 0 ? 'Divergência encontrada' : 'Atenção necessária'}`}
+              </p>
+              <p className="text-[12px] text-gray-500 mt-0.5">
+                {primary?.accountCode} · {primary?.accountName} · {fmtMonth(competence)}
+              </p>
+            </div>
           </div>
-          <span className="rounded-lg border border-[#c8ded8] bg-white/65 px-3 py-2 text-[12px] font-semibold text-[#17332e]">
-            Relatório ao vivo
-          </span>
+          <p className="text-[11px] text-gray-400 shrink-0 mt-1">
+            {caseData ? new Date(caseData.createdAt).toLocaleString('pt-BR') : ''}
+          </p>
         </div>
       </div>
 
-      <div className="space-y-4 p-4">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <PanelKpi label="Saldo extrato" value={fmtCurrency(primary?.finalCheckpoint?.statementBalance)} sub="último PDF lido" />
-          <PanelKpi label="Saldo Questor" value={fmtCurrency(primary?.finalCheckpoint?.ledgerBalance)} sub="Razão contábil" />
-          <PanelKpi label="Diferença apurada" value={fmtCurrency(difference)} sub={`${results.filter((r) => r.status === 'divergent').length} conta(s) divergente(s)`} danger={difference > 0} />
-          <PanelKpi label="Pendências" value={String(open)} sub={`${reconciled} conciliada(s)`} danger={open > 0} />
+      <div className="p-4 space-y-4">
+
+        {/* Balances — always visible, big and clear */}
+        <div className="grid grid-cols-3 gap-3">
+          <div className="rounded-xl bg-gray-50 border border-gray-100 p-3 text-center">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Extrato banco</p>
+            <p className="text-[17px] font-bold text-[#0a2520] tabular-nums">{fmtCurrency(primary?.finalCheckpoint?.statementBalance)}</p>
+            <p className="text-[10px] text-gray-400 mt-0.5">{fmtDate(primary?.finalCheckpoint?.date)}</p>
+          </div>
+          <div className="rounded-xl bg-gray-50 border border-gray-100 p-3 text-center">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Razão Questor</p>
+            <p className="text-[17px] font-bold text-[#0a2520] tabular-nums">{fmtCurrency(primary?.finalCheckpoint?.ledgerBalance)}</p>
+            <p className="text-[10px] text-gray-400 mt-0.5">contabilidade</p>
+          </div>
+          <div className={`rounded-xl border p-3 text-center ${difference > 0 ? 'bg-red-50 border-red-100' : 'bg-emerald-50 border-emerald-100'}`}>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Diferença</p>
+            <p className={`text-[17px] font-bold tabular-nums ${difference > 0 ? 'text-red-600' : 'text-emerald-600'}`}>{fmtCurrency(difference)}</p>
+            <p className="text-[10px] text-gray-400 mt-0.5">{difference > 0 ? 'a regularizar' : 'zerada'}</p>
+          </div>
         </div>
 
-        {periods.length > 0 && (
-          <div className="grid gap-3 xl:grid-cols-2">
-            {periods.map((result, index) => (
-              <PanelPeriodCard key={`${result.accountCode}-${result.periodStart}-${index}`} result={result} />
-            ))}
-          </div>
-        )}
-
+        {/* Divergence explanation — plain language */}
         {primary?.status === 'divergent' && (
-          <div className="rounded-xl border border-amber-300/60 bg-amber-100 px-4 py-3 text-[#2d2104] shadow-sm">
-            <div className="flex gap-3">
-              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
-              <div>
-                <h3 className="text-sm font-bold">Ação necessária: lançamento faltante no Questor</h3>
-                <p className="mt-1 text-[12.5px] leading-relaxed">
-                  O último dia conciliado foi <strong>{fmtDate(primary.lastMatchedCheckpoint?.date)}</strong>. A primeira divergência aparece em <strong>{fmtDate(primary.firstDivergentCheckpoint?.date)}</strong>, com diferença de <strong>{fmtCurrency(difference)}</strong>.
-                  {candidate ? ` O lançamento mais provável no extrato é "${candidate.description}", no valor de ${fmtCurrency(candidate.amount)}.` : ''}
-                </p>
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+            <p className="text-[13px] font-semibold text-amber-900 mb-2">O que está divergindo</p>
+            <div className="space-y-2 text-[12.5px] text-amber-800">
+              <div className="flex items-start gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5 shrink-0" />
+                <span>Conciliado até <strong>{fmtDate(primary.lastMatchedCheckpoint?.date)}</strong></span>
               </div>
+              <div className="flex items-start gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500 mt-1.5 shrink-0" />
+                <span>Primeira divergência em <strong>{fmtDate(primary.firstDivergentCheckpoint?.date)}</strong> — diferença de <strong>{fmtCurrency(difference)}</strong></span>
+              </div>
+              {candidate && (
+                <div className="flex items-start gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mt-1.5 shrink-0" />
+                  <span>Lançamento provável no extrato: <strong>"{candidate.description}"</strong> ({fmtCurrency(candidate.amount)})</span>
+                </div>
+              )}
             </div>
           </div>
         )}
 
-        {tableRows.length > 0 && (
-          <div className="rounded-xl border border-[#d7e7e3] bg-white/65 p-4 shadow-sm">
-            <div className="mb-3 flex items-start justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-bold text-[#0a2520]">Análise do dia {fmtDate(primary?.firstDivergentCheckpoint?.date)}</h3>
-                <p className="text-[11px] text-[#6f827d]">Lado A = Questor/Razão. Lado B = extrato bancário enviado pelo cliente.</p>
-              </div>
-              <span className="rounded-full border border-[#efb5bb] bg-[#ffe4e7] px-2 py-1 text-[10px] font-semibold text-[#b63d4a]">conciliação parcial</span>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[720px] text-left text-[11.5px]">
-                <thead>
-                  <tr className="border-b border-[#d7e7e3] text-[#8da09b]">
-                    <th className="py-2 pr-3">Lado</th>
-                    <th className="px-3 py-2">Data</th>
-                    <th className="px-3 py-2">Descrição</th>
-                    <th className="px-3 py-2 text-right">Débito</th>
-                    <th className="px-3 py-2 text-right">Crédito</th>
-                    <th className="px-3 py-2 text-right">Valor</th>
-                    <th className="py-2 pl-3 text-right">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#d7e7e3]">
-                  {tableRows.map((row, index) => (
-                    <tr key={`${row.side}-${row.date}-${index}`} className={row.status === 'Provável' ? 'bg-[#fff1f2]' : ''}>
-                      <td className="py-2 pr-3"><span className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-[#dbf4ee] text-[10px] font-bold text-[#087568]">{row.side}</span></td>
-                      <td className="px-3 py-2 text-[#6f827d]">{fmtDate(row.date)}</td>
-                      <td className="max-w-[360px] px-3 py-2 text-[#17332e]">{row.description}</td>
-                      <td className="px-3 py-2 text-right tabular-nums text-[#6f827d]">{fmtCurrency(row.debit)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums text-[#087568]">{fmtCurrency(row.credit)}</td>
-                      <td className={`px-3 py-2 text-right font-semibold tabular-nums ${row.amount < 0 ? 'text-[#c44d59]' : 'text-[#087568]'}`}>{fmtCurrency(row.amount)}</td>
-                      <td className="py-2 pl-3 text-right"><span className="rounded-full bg-[#e4efec] px-2 py-0.5 text-[10px] font-semibold text-[#647873]">{row.status}</span></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {reviewItems.length > 0 && (
-          <div className="rounded-xl border border-[#d7e7e3] bg-white/65 p-4 shadow-sm">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-bold text-[#0a2520]">Verificação e regularização</h3>
-                <p className="mt-0.5 text-[11px] text-[#6f827d]">Checklist operacional gerado a partir das divergências.</p>
-              </div>
-              <span className="rounded-full border border-[#aac7e8] bg-[#e8f2ff] px-2 py-1 text-[10px] font-semibold text-[#2563a8]">
-                pronto para revisão
-              </span>
-            </div>
+        {/* Action checklist — numbered, simple */}
+        {openItems.length > 0 && (
+          <div className="rounded-xl border border-gray-200 bg-white p-4">
+            <p className="text-[13px] font-semibold text-[#0a2520] mb-3">O que fazer agora</p>
             <div className="space-y-2">
-              {reviewItems.map((item) => (
-                <div key={item.id} className="flex items-start justify-between gap-3 rounded-lg border border-[#d7e7e3] bg-[#f8fcfb] px-3 py-2">
-                  <div>
-                    <p className="text-[12px] font-semibold text-[#17332e]">{item.title}</p>
-                    <p className="mt-0.5 text-[11px] text-[#6f827d]">
-                      {fmtDate(item.dueDate)} · {item.detail}
-                    </p>
+              {openItems.map((item, i) => (
+                <div key={item.id} className="flex items-start gap-3">
+                  <span className="w-5 h-5 rounded-full bg-[#0a2520] text-white text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">{i + 1}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[12.5px] font-medium text-[#0a2520]">{item.title}</p>
+                    <p className="text-[11.5px] text-gray-500 mt-0.5 leading-snug">{item.detail}</p>
                     {item.amount !== undefined && (
-                      <p className="mt-1 text-[11px] font-semibold tabular-nums text-[#c44d59]">{fmtCurrency(item.amount)}</p>
+                      <p className="text-[11.5px] font-semibold text-red-600 mt-0.5 tabular-nums">{fmtCurrency(item.amount)}</p>
                     )}
                   </div>
-                  <span className="shrink-0 rounded-full bg-[#ffe4e7] px-2 py-0.5 text-[10px] font-semibold text-[#b63d4a]">{item.status === 'open' ? 'Pendente' : 'Resolvido'}</span>
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        <PanelMissingDocs results={results} />
+        {allGood && (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 flex items-center gap-3">
+            <BadgeCheck className="w-5 h-5 text-emerald-600 shrink-0" />
+            <p className="text-[13px] font-medium text-emerald-800">Todas as contas estão conciliadas. Nenhuma ação necessária.</p>
+          </div>
+        )}
 
-        <PanelMethodology />
+        {/* Period summary — compact */}
+        {results.filter((r) => r.periodStart || r.periodEnd).length > 0 && (
+          <div className="rounded-xl border border-gray-100 overflow-hidden">
+            <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-100">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Resumo por período</p>
+            </div>
+            <div className="divide-y divide-gray-100">
+              {results
+                .filter((r) => r.periodStart || r.periodEnd)
+                .sort((a, b) => (a.periodStart ?? '').localeCompare(b.periodStart ?? ''))
+                .map((r, i) => {
+                  const ok = r.status === 'reconciled';
+                  const diff = Math.abs(r.difference ?? 0);
+                  return (
+                    <div key={i} className="flex items-center justify-between gap-4 px-4 py-2.5">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span className={`w-2 h-2 rounded-full shrink-0 ${ok ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                        <span className="text-[12.5px] font-medium text-[#0a2520] truncate">{fmtMonth(r.periodStart ?? r.periodEnd)}</span>
+                      </div>
+                      <div className="flex items-center gap-4 shrink-0 text-right">
+                        <span className="text-[12px] text-gray-500 tabular-nums hidden sm:block">{fmtCurrency(r.finalCheckpoint?.statementBalance)}</span>
+                        <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${ok ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                          {ok ? 'Conciliado' : `Dif. ${fmtCurrency(diff)}`}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        )}
 
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#c8ded8] pt-3 text-[11px] text-[#6f827d]">
-          <span className="inline-flex items-center gap-1.5">
-            <Landmark className="h-3.5 w-3.5" />
-            {caseData?.fileNames.trialBalance ?? 'Balancete'} · {caseData?.fileNames.ledger ?? 'Razão'}
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <Clock className="h-3.5 w-3.5" />
-            {caseData?.fileNames.statements.length ?? 0} extrato(s) processado(s)
-          </span>
+        {/* Technical detail — collapsed by default */}
+        {primary && primary.status === 'divergent' && (
+          <DiverenceTable primary={primary} difference={difference} />
+        )}
+
+        {/* Missing docs */}
+        {missingDocs.length > 0 && (
+          <div className="rounded-xl border border-gray-200 overflow-hidden">
+            <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-100 flex items-center gap-2">
+              <FileWarning className="w-3.5 h-3.5 text-gray-400" />
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Contas sem extrato</p>
+            </div>
+            <div className="divide-y divide-gray-100">
+              {missingDocs.map((r) => (
+                <div key={r.accountCode} className="px-4 py-2.5 flex items-center justify-between gap-3">
+                  <p className="text-[12.5px] text-[#0a2520] font-medium">{r.accountCode} · {r.accountName}</p>
+                  <span className="text-[11px] text-gray-400 shrink-0">{r.message}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Footer */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-2 border-t border-gray-100 text-[11px] text-gray-400">
+          <span>{reconciledResults.length} conciliada(s) · {divergentResults.length} divergente(s)</span>
+          <span>{caseData?.fileNames.statements.length ?? 0} extrato(s)</span>
           {(caseData?.investmentStatementsCount ?? 0) > 0 && (
-            <span className="inline-flex items-center gap-1.5">
-              <TrendingUp className="h-3.5 w-3.5" />
-              {caseData?.investmentStatementsCount} aplicação(ões)
-            </span>
-          )}
-          {reviewItems.filter((item) => item.status === 'open').length === 0 && missing === 0 && (
-            <span className="inline-flex items-center gap-1.5 text-[#087568]">
-              <BadgeCheck className="h-3.5 w-3.5" />
-              Revisão concluída
-            </span>
+            <span>{caseData?.investmentStatementsCount} aplicação(ões)</span>
           )}
         </div>
+
       </div>
     </div>
   );
