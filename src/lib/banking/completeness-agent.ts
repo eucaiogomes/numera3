@@ -29,8 +29,17 @@ function hasAnyStatement(summary: ClassificationSummary): boolean {
   return statementCount(summary) > 0;
 }
 
+function unknownFilesText(summary: ClassificationSummary): string {
+  const details = summary.unknown
+    .map((item) => `${item.file.name}: ${item.error}`)
+    .join('; ');
+
+  return details ? ` Arquivos não reconhecidos: ${details}.` : '';
+}
+
 function buildMissingBaseText(summary: ClassificationSummary): CompletenessResult {
   const hasStatement = hasAnyStatement(summary);
+  const unknownText = unknownFilesText(summary);
 
   if (!hasStatement && !summary.trialBalance && !summary.ledger) {
     return {
@@ -40,7 +49,7 @@ function buildMissingBaseText(summary: ClassificationSummary): CompletenessResul
       missingLedger: true,
       missingStatements: [],
       questionText:
-        'Ainda não identifiquei os documentos da conciliação. Envie o Razão Questor e pelo menos um extrato bancário. O balancete ajuda a validar as contas analíticas, mas não é obrigatório quando o Razão estiver disponível.',
+        `Ainda não identifiquei os documentos da conciliação. Envie o Razão Questor e pelo menos um extrato bancário. O balancete ajuda a validar as contas analíticas, mas não é obrigatório quando o Razão estiver disponível.${unknownText}`,
     };
   }
 
@@ -52,7 +61,7 @@ function buildMissingBaseText(summary: ClassificationSummary): CompletenessResul
       missingLedger: true,
       missingStatements: [],
       questionText:
-        'Recebi o extrato, mas ainda não tenho o Lado A da conciliação. Envie o Razão Questor para comparar os saldos. Se quiser, envie também o balancete para validar quais contas são analíticas.',
+        `Recebi o extrato, mas ainda não tenho o Lado A da conciliação. Envie o Razão Questor para comparar os saldos. Se quiser, envie também o balancete para validar quais contas são analíticas.${unknownText}`,
     };
   }
 
@@ -64,7 +73,7 @@ function buildMissingBaseText(summary: ClassificationSummary): CompletenessResul
       missingLedger: true,
       missingStatements: [],
       questionText:
-        'Recebi o balancete e o extrato. Para conciliar de verdade ainda preciso do Razão Questor, porque é nele que ficam os saldos diários e lançamentos usados na comparação.',
+        `Recebi o balancete e o extrato. Para conciliar de verdade ainda preciso do Razão Questor, porque é nele que ficam os saldos diários e lançamentos usados na comparação.${unknownText}`,
     };
   }
 
@@ -76,7 +85,7 @@ function buildMissingBaseText(summary: ClassificationSummary): CompletenessResul
       missingLedger: false,
       missingStatements: [],
       questionText:
-        'Recebi o Razão Questor. Agora envie o extrato bancário em PDF para montar o Lado B e comparar os saldos.',
+        `Recebi o Razão Questor. Agora envie o extrato bancário em PDF para montar o Lado B e comparar os saldos.${unknownText}`,
     };
   }
 
@@ -87,7 +96,7 @@ function buildMissingBaseText(summary: ClassificationSummary): CompletenessResul
     missingLedger: !summary.ledger,
     missingStatements: [],
     questionText:
-      'Ainda falta informação para conciliar. O mínimo necessário é Razão Questor mais pelo menos um extrato bancário.',
+      `Ainda falta informação para conciliar. O mínimo necessário é Razão Questor mais pelo menos um extrato bancário.${unknownText}`,
   };
 }
 

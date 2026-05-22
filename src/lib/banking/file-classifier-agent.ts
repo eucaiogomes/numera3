@@ -38,8 +38,23 @@ export interface ClassificationSummary {
   unknown: (ClassifiedFile & { kind: 'unknown' })[];
 }
 
+function getFileExtension(file: File): string | undefined {
+  const nameExtension = file.name.split('.').pop()?.toLowerCase();
+  if (nameExtension && nameExtension !== file.name.toLowerCase()) return nameExtension;
+
+  if (file.type === 'application/pdf') return 'pdf';
+  if (
+    file.type === 'application/vnd.ms-excel' ||
+    file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  ) {
+    return file.type === 'application/vnd.ms-excel' ? 'xls' : 'xlsx';
+  }
+
+  return nameExtension;
+}
+
 async function classifyFile(file: File): Promise<ClassifiedFile> {
-  const ext = file.name.split('.').pop()?.toLowerCase();
+  const ext = getFileExtension(file);
 
   if (ext === 'pdf') {
     try {
