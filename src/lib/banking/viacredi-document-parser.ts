@@ -35,5 +35,15 @@ export function parseViacrediDocumentTextTokens(tokens: string[], fileName?: str
 }
 
 export async function parseViacrediDocumentPdf(file: File): Promise<ParsedViacrediPdf> {
-  return parseViacrediDocumentTextTokens(await extractTokensFromPdf(file), file.name);
+  console.log(`[Viacredi Parser] Iniciando extração de tokens do PDF: ${file.name}`);
+  try {
+    const tokens = await extractTokensFromPdf(file);
+    console.log(`[Viacredi Parser] Tokens extraídos com sucesso: ${tokens.length} tokens`, tokens.slice(0, 20));
+    const result = parseViacrediDocumentTextTokens(tokens, file.name);
+    console.log(`[Viacredi Parser] Parsing bem-sucedido, tipo: ${result.type}`);
+    return result;
+  } catch (e) {
+    console.error(`[Viacredi Parser] Erro ao processar PDF ${file.name}:`, e);
+    throw e;
+  }
 }

@@ -56,16 +56,21 @@ function getFileExtension(file: File): string | undefined {
 async function classifyFile(file: File): Promise<ClassifiedFile> {
   const ext = getFileExtension(file);
 
+  console.log(`[File Classifier] Processando arquivo: ${file.name}, extensão detectada: ${ext}, tipo MIME: ${file.type}`);
+
   if (ext === 'pdf') {
     try {
+      console.log(`[File Classifier] Tentando parsear PDF: ${file.name}`);
       const parsed = await parseViacrediDocumentPdf(file);
+      console.log(`[File Classifier] PDF parseado com sucesso: ${file.name}, tipo: ${parsed.type}`);
       if (parsed.type === 'investment_statement') {
         return { kind: 'investment_statement', file, result: parsed.statement };
       }
       return { kind: 'checking_statement', file, result: parsed.statement };
     } catch (e) {
       const errMsg = e instanceof Error ? e.message : 'Falha ao ler PDF';
-      console.error(`[File Classifier] Erro ao processar PDF ${file.name}:`, errMsg, e);
+      console.error(`[File Classifier] Erro ao processar PDF ${file.name}:`, errMsg);
+      console.error(`[File Classifier] Stack:`, e instanceof Error ? e.stack : 'sem stack trace');
       return { kind: 'unknown', file, error: errMsg };
     }
   }
