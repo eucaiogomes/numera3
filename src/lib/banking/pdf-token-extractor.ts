@@ -1,4 +1,4 @@
-import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
+import pdfWorkerLibUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 
 type PromiseWithResolvers<T> = {
   promise: Promise<T>;
@@ -37,9 +37,41 @@ async function loadPdfJs() {
   }
 }
 
+let workerObjectUrl: string | null = null;
+
+function createPdfWorkerUrl(): string {
+  if (workerObjectUrl) return workerObjectUrl;
+
+  const workerSource = `
+if (!Promise.withResolvers) {
+  Object.defineProperty(Promise, 'withResolvers', {
+    configurable: true,
+    writable: true,
+    value: () => {
+      let resolve;
+      let reject;
+      const promise = new Promise((promiseResolve, promiseReject) => {
+        resolve = promiseResolve;
+        reject = promiseReject;
+      });
+      return { promise, resolve, reject };
+    },
+  });
+}
+
+await import(${JSON.stringify(new URL(pdfWorkerLibUrl, globalThis.location?.href).href)});
+`;
+
+  workerObjectUrl = URL.createObjectURL(
+    new Blob([workerSource], { type: 'text/javascript' }),
+  );
+
+  return workerObjectUrl;
+}
+
 function configurePdfWorker(pdfjsLib: Awaited<ReturnType<typeof loadPdfJs>>) {
   if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
-    pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+    pdfjsLib.GlobalWorkerOptions.workerSrc = createPdfWorkerUrl();
   }
 }
 
