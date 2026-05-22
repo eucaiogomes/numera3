@@ -1,3 +1,5 @@
+import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
+
 type PromiseWithResolvers<T> = {
   promise: Promise<T>;
   resolve: (value: T | PromiseLike<T>) => void;
@@ -36,20 +38,8 @@ async function loadPdfJs() {
 }
 
 function configurePdfWorker(pdfjsLib: Awaited<ReturnType<typeof loadPdfJs>>) {
-  const workerPaths = [
-    'pdfjs-dist/legacy/build/pdf.worker.min.mjs',
-    'pdfjs-dist/build/pdf.worker.min.mjs',
-  ];
-
-  for (const workerPath of workerPaths) {
-    try {
-      if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(workerPath, import.meta.url).href;
-      }
-      return;
-    } catch {
-      // Try the next worker path.
-    }
+  if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
   }
 }
 
