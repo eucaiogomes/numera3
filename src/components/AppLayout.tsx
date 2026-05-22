@@ -15,6 +15,8 @@ import {
   LogOut,
   Settings,
   Check,
+  Menu,
+  X,
 } from "lucide-react";
 import { Link, useLocation } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
@@ -42,6 +44,7 @@ function SidebarGroup({
   rootTo,
   defaultOpen = false,
   collapsed = false,
+  onNavigate,
 }: {
   icon: ReactNode;
   label: string;
@@ -51,6 +54,7 @@ function SidebarGroup({
   rootTo?: string;
   defaultOpen?: boolean;
   collapsed?: boolean;
+  onNavigate?: () => void;
 }) {
   const location = useLocation();
   const isActive =
@@ -84,15 +88,17 @@ function SidebarGroup({
     </div>
   );
 
-
   return (
     <div>
-      {to && !subItems ? <Link to={to}>{header}</Link> : header}
+      {to && !subItems ? (
+        <Link to={to} onClick={onNavigate}>{header}</Link>
+      ) : header}
       {!collapsed && open && (rootTo || subItems) && (
         <div className="mx-2 mt-0.5">
           {rootTo && (
             <Link
               to={rootTo}
+              onClick={onNavigate}
               className={`flex items-center gap-2 pl-9 pr-2.5 py-1.5 rounded-md text-[12.5px] transition-colors ${
               location.pathname === rootTo
                   ? "bg-[#e6f7f2] text-[#0a2520] font-medium"
@@ -111,6 +117,7 @@ function SidebarGroup({
               <Link
                 key={s.to}
                 to={s.to}
+                onClick={onNavigate}
                 style={{ paddingLeft: pl }}
                 className={`flex items-center gap-2 pr-2.5 py-1.5 rounded-md text-[12.5px] transition-colors ${
                   active
@@ -140,28 +147,132 @@ function Badge({ n }: { n: number }) {
   );
 }
 
+function SidebarContent({
+  collapsed,
+  onNavigate,
+}: {
+  collapsed: boolean;
+  onNavigate?: () => void;
+}) {
+  return (
+    <>
+      <nav className="py-3 flex-1 overflow-y-auto">
+        <div className={`${collapsed ? "px-2" : "px-3"} pb-2`}>
+          <Link
+            to="/"
+            onClick={onNavigate}
+            title={collapsed ? "Novo" : undefined}
+            className={`group flex items-center gap-2 ${collapsed ? "justify-center px-0" : "px-2.5"} py-2 rounded-md bg-white border border-gray-200/80 hover:border-[#0d9488]/40 shadow-sm hover:shadow-[0_4px_14px_-4px_rgba(13,148,136,0.25)] transition-all`}
+          >
+            <span className="w-5 h-5 rounded-md bg-gradient-to-br from-[#0d9488] to-[#0a2520] flex items-center justify-center shrink-0">
+              <Plus className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />
+            </span>
+            {!collapsed && (
+              <span className="text-[13px] font-medium text-[#0a2520] tracking-tight">Novo</span>
+            )}
+          </Link>
+        </div>
+
+        <SidebarGroup
+          icon={<Sparkles className="w-[18px] h-[18px]" />}
+          label="IA Contábil"
+          to="/"
+          collapsed={collapsed}
+          onNavigate={onNavigate}
+        />
+        <SidebarGroup
+          icon={<Calculator className="w-[18px] h-[18px]" />}
+          label="Conciliações"
+          subItems={[
+            { label: "Bancária", to: "/conciliacao-bancaria", indent: 1 },
+          ]}
+          collapsed={collapsed}
+          onNavigate={onNavigate}
+        />
+        <SidebarGroup
+          icon={<Folder className="w-[18px] h-[18px]" />}
+          label="Documentos"
+          rootTo="/documentos"
+          rootBadge={2}
+          collapsed={collapsed}
+          onNavigate={onNavigate}
+          subItems={[
+            { label: "Jurisprudência", to: "/documentos/jurisprudencia", badge: 8, indent: 1 },
+            { label: "Transcrições", to: "/documentos/transcricoes", badge: 42, indent: 1 },
+          ]}
+        />
+
+        {!collapsed && (
+          <>
+            <div className="mt-5 px-5 pb-1.5 flex items-center gap-2">
+              <Clock className="w-3 h-3 text-[#9aa8a4]" />
+              <span className="text-[10px] uppercase tracking-[0.08em] font-semibold text-[#9aa8a4]">
+                Recentes
+              </span>
+            </div>
+            <div className="flex flex-col px-2">
+              {[
+                { label: "Conciliação Bancária - Itaú", to: "/" },
+                { label: "SPED Contábil 2024", to: "/" },
+                { label: "DRE - Janeiro/2024", to: "/" },
+                { label: "Balanço Patrimonial", to: "/" },
+                { label: "Fechamento Contábil 01/2024", to: "/" },
+              ].map((item, i) => (
+                <Link
+                  key={i}
+                  to={item.to}
+                  onClick={onNavigate}
+                  className="px-2.5 py-1.5 rounded-md text-[12.5px] text-[#6b7874] hover:bg-white hover:text-[#0a2520] transition-colors truncate"
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </div>
+          </>
+        )}
+
+        {collapsed && (
+          <div className="mt-4 flex justify-center">
+            <Clock className="w-4 h-4 text-gray-400" />
+          </div>
+        )}
+      </nav>
+    </>
+  );
+}
+
 export function AppLayout({ children }: { children: ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
     <div className="min-h-screen bg-[#ececec] flex flex-col">
-      <header className="bg-gradient-to-r from-[#0a2520] via-[#0d3530] to-[#0a2520] text-white flex items-center justify-between px-4 h-16 relative z-20 shadow-md">
-        <div className="flex items-center gap-6">
-          <Link to="/" className="flex items-center gap-2.5">
-            <NumeraMark className="w-8 h-8 text-[#5fd9be]" />
-            <span className="text-[22px] font-semibold tracking-tight text-white lowercase">numera</span>
+      <header className="bg-gradient-to-r from-[#0a2520] via-[#0d3530] to-[#0a2520] text-white flex items-center justify-between px-4 h-14 md:h-16 relative z-30 shadow-md">
+        <div className="flex items-center gap-3 md:gap-6">
+          {/* Mobile hamburger */}
+          <button
+            onClick={() => setMobileOpen((o) => !o)}
+            className="md:hidden w-8 h-8 flex items-center justify-center text-white/70 hover:text-white transition-colors"
+            aria-label="Menu"
+          >
+            {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
+
+          <Link to="/" className="flex items-center gap-2">
+            <NumeraMark className="w-7 h-7 md:w-8 md:h-8 text-[#5fd9be]" />
+            <span className="text-[20px] md:text-[22px] font-semibold tracking-tight text-white lowercase">numera</span>
           </Link>
         </div>
 
         <div className="flex items-center gap-3">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="flex items-center gap-3 pl-2 pr-2 py-1 rounded-full hover:bg-white/10 transition-colors outline-none focus:ring-2 focus:ring-[#5fd9be]/40">
-                <div className="text-right leading-tight">
+              <button className="flex items-center gap-2 md:gap-3 pl-2 pr-2 py-1 rounded-full hover:bg-white/10 transition-colors outline-none focus:ring-2 focus:ring-[#5fd9be]/40">
+                <div className="hidden sm:block text-right leading-tight">
                   <div className="text-sm font-semibold">Caio</div>
                   <div className="text-[10px] uppercase tracking-wide text-white/60">Contador</div>
                 </div>
-                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#5fd9be] to-[#0d9488] border-2 border-white/20 shadow-sm shadow-black/30 flex items-center justify-center text-[#0a2520] text-sm font-semibold">C</div>
+                <div className="w-8 h-8 md:w-9 md:h-9 rounded-full bg-gradient-to-br from-[#5fd9be] to-[#0d9488] border-2 border-white/20 shadow-sm shadow-black/30 flex items-center justify-center text-[#0a2520] text-sm font-semibold">C</div>
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" sideOffset={8} className="w-60">
@@ -209,91 +320,33 @@ export function AppLayout({ children }: { children: ReactNode }) {
         </div>
       </header>
 
+      <div className="flex flex-1 relative">
+        {/* Mobile overlay backdrop */}
+        {mobileOpen && (
+          <div
+            className="fixed inset-0 bg-black/40 z-20 md:hidden"
+            onClick={() => setMobileOpen(false)}
+          />
+        )}
 
-      <div className="flex flex-1">
+        {/* Mobile sidebar drawer */}
+        <aside
+          className={`fixed top-14 left-0 bottom-0 w-64 bg-[#fafafb] border-r border-gray-200/70 shadow-xl z-20 flex flex-col transition-transform duration-300 ease-[cubic-bezier(.2,.7,.2,1)] md:hidden ${
+            mobileOpen ? "translate-x-0" : "-translate-x-full"
+          }`}
+        >
+          <SidebarContent collapsed={false} onNavigate={() => setMobileOpen(false)} />
+          <div className="p-4 border-t border-gray-100">
+            <span className="text-[10px] uppercase tracking-wider text-gray-400">Numera IA • v1.0.0</span>
+          </div>
+        </aside>
+
+        {/* Desktop sidebar */}
         <aside
           style={{ width: collapsed ? 64 : 232 }}
-          className="bg-[#fafafb] border-r border-gray-200/70 shadow-[1px_0_0_rgba(10,37,32,0.02),4px_0_24px_-12px_rgba(10,37,32,0.08)] flex flex-col justify-between z-10 overflow-hidden transition-[width] duration-300 ease-[cubic-bezier(.2,.7,.2,1)]"
+          className="hidden md:flex bg-[#fafafb] border-r border-gray-200/70 shadow-[1px_0_0_rgba(10,37,32,0.02),4px_0_24px_-12px_rgba(10,37,32,0.08)] flex-col justify-between z-10 overflow-hidden transition-[width] duration-300 ease-[cubic-bezier(.2,.7,.2,1)]"
         >
-          <nav className="py-3">
-            <div className={`${collapsed ? "px-2" : "px-3"} pb-2`}>
-              <Link
-                to="/"
-                title={collapsed ? "Novo" : undefined}
-                className={`group flex items-center gap-2 ${collapsed ? "justify-center px-0" : "px-2.5"} py-2 rounded-md bg-white border border-gray-200/80 hover:border-[#0d9488]/40 shadow-sm hover:shadow-[0_4px_14px_-4px_rgba(13,148,136,0.25)] transition-all`}
-              >
-                <span className="w-5 h-5 rounded-md bg-gradient-to-br from-[#0d9488] to-[#0a2520] flex items-center justify-center shrink-0">
-                  <Plus className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />
-                </span>
-                {!collapsed && (
-                  <span className="text-[13px] font-medium text-[#0a2520] tracking-tight">Novo</span>
-                )}
-              </Link>
-            </div>
-
-            <SidebarGroup
-              icon={<Sparkles className="w-[18px] h-[18px]" />}
-              label="IA Contábil"
-              to="/"
-              collapsed={collapsed}
-            />
-            <SidebarGroup
-              icon={<Calculator className="w-[18px] h-[18px]" />}
-              label="Conciliações"
-              rootTo="/conciliacao"
-              subItems={[
-                { label: "Bancária", to: "/conciliacao-bancaria", indent: 1 },
-              ]}
-              collapsed={collapsed}
-            />
-            <SidebarGroup
-              icon={<Folder className="w-[18px] h-[18px]" />}
-              label="Documentos"
-              rootTo="/documentos"
-              rootBadge={2}
-              collapsed={collapsed}
-              subItems={[
-                { label: "Jurisprudência", to: "/documentos/jurisprudencia", badge: 8, indent: 1 },
-                { label: "Transcrições", to: "/documentos/transcricoes", badge: 42, indent: 1 },
-              ]}
-            />
-
-            {!collapsed && (
-              <>
-                <div className="mt-5 px-5 pb-1.5 flex items-center gap-2">
-                  <Clock className="w-3 h-3 text-[#9aa8a4]" />
-                  <span className="text-[10px] uppercase tracking-[0.08em] font-semibold text-[#9aa8a4]">
-                    Recentes
-                  </span>
-                </div>
-                <div className="flex flex-col px-2">
-                  {[
-                    { label: "Conciliação Bancária - Itaú", to: "/" },
-                    { label: "SPED Contábil 2024", to: "/" },
-                    { label: "DRE - Janeiro/2024", to: "/" },
-                    { label: "Balanço Patrimonial", to: "/" },
-                    { label: "Fechamento Contábil 01/2024", to: "/" },
-                  ].map((item, i) => (
-                    <Link
-                      key={i}
-                      to={item.to}
-                      className="px-2.5 py-1.5 rounded-md text-[12.5px] text-[#6b7874] hover:bg-white hover:text-[#0a2520] transition-colors truncate"
-                    >
-                      {item.label}
-                    </Link>
-                  ))}
-                </div>
-              </>
-            )}
-
-            {collapsed && (
-              <div className="mt-4 flex justify-center">
-                <Clock className="w-4 h-4 text-gray-400" />
-              </div>
-            )}
-          </nav>
-
-
+          <SidebarContent collapsed={collapsed} />
           <div className={`p-4 border-t border-gray-100 flex items-center ${collapsed ? "justify-center" : "justify-between"} gap-2`}>
             {!collapsed && (
               <span className="text-[10px] uppercase tracking-wider text-gray-400 whitespace-nowrap">
@@ -310,7 +363,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
           </div>
         </aside>
 
-        <main className="flex-1 px-8 py-6 min-w-0">{children}</main>
+        <main className="flex-1 px-4 py-4 md:px-8 md:py-6 min-w-0 overflow-x-hidden">{children}</main>
       </div>
     </div>
   );

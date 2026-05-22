@@ -20,13 +20,10 @@ import {
 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
-import { parseFile, applyMappingToSource, SOURCE_COLORS } from '@/lib/universal-parser';
-import type { ParsedSource } from '@/lib/universal-parser';
-import { runMatchingMultiSource } from '@/lib/matching-engine';
-import type { TransactionSource } from '@/lib/matching-engine';
-import { saveReconciliation } from '@/lib/reconciliation-store';
-import { CSVColumnMapper } from '@/components/reconciliation/CSVColumnMapper';
-import type { CSVColumnMapping } from '@/lib/csv-parser';
+import { runFileClassifierAgent, type ClassificationSummary } from '@/lib/banking/file-classifier-agent';
+import { runCompletenessAgent } from '@/lib/banking/completeness-agent';
+import { runReconciliationAgent } from '@/lib/banking/reconciliation-agent';
+import { saveBankingReconciliation } from '@/lib/banking/banking-reconciliation-store';
 
 export const Route = createFileRoute('/')({
   component: Index,
@@ -83,13 +80,13 @@ const TABS: Tab[] = [
   },
 ];
 
-const FORMAT_LABEL: Record<string, string> = {
-  ofx: 'OFX',
-  csv: 'CSV',
-  xlsx: 'XLSX',
-  txt: 'TXT',
-  pdf: 'PDF',
-  unknown: '?',
+const FILE_COLORS = [
+  '#0d9488', '#6366f1', '#f59e0b', '#ec4899', '#8b5cf6', '#14b8a6',
+];
+
+const EXT_LABEL: Record<string, string> = {
+  pdf: 'PDF', xls: 'XLS', xlsx: 'XLSX', ofx: 'OFX',
+  csv: 'CSV', txt: 'TXT',
 };
 
 function Index() {
@@ -103,17 +100,13 @@ function Index() {
   const [showSuggestions, setShowSuggestions] = useState(true);
   const [isDragging, setIsDragging] = useState(false);
 
-  const [parsedSources, setParsedSources] = useState<ParsedSource[]>([]);
-  const [mappingSource, setMappingSource] = useState<ParsedSource | null>(null);
-
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const [processing, setProcessing] = useState(false);
   const [stepLabel, setStepLabel] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
   const current = TABS.find((t) => t.id === activeTab) ?? TABS[0];
-
-  const readySources = parsedSources.filter((p) => !p.needsMapping && p.transactions.length > 0);
-  const canSend = readySources.length >= 2 && !processing && !mappingSource;
+  const canSend = attachedFiles.length > 0 && !processing;
 
   const autoResize = () => {
     const el = textareaRef.current;
@@ -130,140 +123,116 @@ function Index() {
     });
   };
 
-  async function addFiles(files: File[]) {
-    if (files.length === 0) return;
-    setProcessing(true);
-    setStepLabel(`Lendo ${files.length} arquivo(s)…`);
-    setErrorMsg('');
-
-    const newParsed: ParsedSource[] = [];
-    for (const file of files) {
-      try {
-        const parsed = await parseFile(file);
-        newParsed.push(parsed);
-      } catch (err) {
-        setErrorMsg(`Erro ao ler ${file.name}: ${err instanceof Error ? err.message : 'erro desconhecido'}`);
-        setProcessing(false);
-        return;
-      }
-    }
-
-    setParsedSources((prev) => {
-      const updated = [...prev];
-      for (const p of newParsed) {
-        const idx = updated.findIndex((x) => x.fileName === p.fileName);
-        if (idx >= 0) updated[idx] = p;
-        else updated.push(p);
-      }
-      return updated;
+  function addFiles(incoming: File[]) {
+    if (incoming.length === 0) return;
+    setAttachedFiles((prev) => {
+      const existingNames = new Set(prev.map((f) => f.name));
+      return [...prev, ...incoming.filter((f) => !existingNames.has(f.name))];
     });
+    setErrorMsg('');
+  }
 
-    setProcessing(false);
-    setStepLabel('');
-
-    const needsMapping = newParsed.find((p) => p.needsMapping);
-    if (needsMapping) setMappingSource(needsMapping);
+  function removeFile(name: string) {
+    setAttachedFiles((prev) => prev.filter((f) => f.name !== name));
   }
 
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(e.target.files ?? []);
+    addFiles(Array.from(e.target.files ?? []));
     e.target.value = '';
-    addFiles(files);
   }
 
   function handleDrop(e: React.DragEvent) {
     e.preventDefault();
     setIsDragging(false);
-    const files = Array.from(e.dataTransfer.files);
-    addFiles(files);
-  }
-
-  function removeSource(tempId: string) {
-    setParsedSources((prev) => prev.filter((p) => p.tempId !== tempId));
-  }
-
-  function handleMappingConfirm(mapping: CSVColumnMapping) {
-    if (!mappingSource) return;
-    const txs = applyMappingToSource(mappingSource, mapping);
-    setParsedSources((prev) =>
-      prev.map((p) =>
-        p.tempId === mappingSource.tempId ? { ...p, transactions: txs, needsMapping: false } : p,
-      ),
-    );
-    setMappingSource(null);
-    // Check if another file in the queue needs mapping
-    const nextNeedsMapping = parsedSources.find(
-      (p) => p.tempId !== mappingSource.tempId && p.needsMapping,
-    );
-    if (nextNeedsMapping) setMappingSource(nextNeedsMapping);
+    addFiles(Array.from(e.dataTransfer.files));
   }
 
   async function handleSend() {
     if (!canSend) return;
     setProcessing(true);
-    setStepLabel('Executando motor de conciliação…');
     setErrorMsg('');
 
     try {
-      const sources: TransactionSource[] = readySources.map((p, i) => ({
-        id: p.tempId,
-        fileName: p.fileName,
-        label: p.fileName.replace(/\.[^.]+$/, ''),
-        format: p.format,
-        color: SOURCE_COLORS[i % SOURCE_COLORS.length],
-        transactions: p.transactions,
-      }));
+      // Phase 1 — classify files
+      setStepLabel('Identificando arquivos…');
+      const summary: ClassificationSummary = await runFileClassifierAgent(attachedFiles, () => {});
 
-      const { matches, divergences } = runMatchingMultiSource(sources);
+      // Phase 2 — completeness check
+      setStepLabel('Verificando completude…');
+      const completeness = runCompletenessAgent(summary);
 
-      setStepLabel('Salvando resultados…');
-      const id = crypto.randomUUID();
-      saveReconciliation({
-        id,
-        prompt: value.trim(),
-        status: 'reviewing',
-        sources,
-        matches,
-        divergences,
-        createdAt: new Date().toISOString(),
+      if (!completeness.ready) {
+        if (!completeness.canProceed) {
+          setErrorMsg(completeness.questionText);
+          setProcessing(false);
+          setStepLabel('');
+          return;
+        }
+        // can proceed with partial docs — continue
+      }
+
+      // Phase 3 — reconciliation
+      setStepLabel('Conciliando contas…');
+      const { results, reviewItems } = await runReconciliationAgent(summary, (steps) => {
+        const running = steps.find((s) => s.status === 'running');
+        if (running) setStepLabel(`Conciliando ${running.label}…`);
       });
 
-      await navigate({ to: '/conciliacao/$id', params: { id } });
+      // Phase 4 — save & navigate
+      setStepLabel('Salvando resultados…');
+      const allPeriods = [
+        ...summary.checkingStatements.map((s) => s.result.periodEnd),
+        ...summary.investmentStatements.map((s) => s.result.periodEnd),
+      ].sort();
+      const competence = (allPeriods.at(-1) ?? new Date().toISOString()).slice(0, 7);
+      const id = crypto.randomUUID();
+
+      await saveBankingReconciliation({
+        id,
+        competence,
+        createdAt: new Date().toISOString(),
+        fileNames: {
+          trialBalance: summary.trialBalance?.file.name ?? 'Não enviado',
+          ledger: summary.ledger?.file.name ?? '',
+          statements: [
+            ...summary.checkingStatements.map((s) => s.file.name),
+            ...summary.investmentStatements.map((s) => s.file.name),
+          ],
+        },
+        bankAccountsCount: summary.trialBalance?.result.bankLikeAccounts.length ?? results.length,
+        ledgerAccountsCount: summary.ledger?.result.accounts.length ?? 0,
+        statementsCount: summary.checkingStatements.length,
+        investmentStatementsCount: summary.investmentStatements.length,
+        investmentStatements: summary.investmentStatements.map((s) => s.result),
+        results,
+        reviewItems,
+      });
+
+      await navigate({ to: '/conciliacao-bancaria/$id', params: { id } });
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : 'Erro ao processar arquivos.');
       setProcessing(false);
+      setStepLabel('');
     }
   }
 
   return (
     <AppLayout>
-      {mappingSource && (
-        <CSVColumnMapper
-          headers={mappingSource.headers ?? []}
-          detected={mappingSource.detectedMapping ?? {}}
-          onConfirm={handleMappingConfirm}
-          onCancel={() => {
-            removeSource(mappingSource.tempId);
-            setMappingSource(null);
-          }}
-        />
-      )}
-
-      <div className="max-w-2xl mx-auto pt-10 pb-24">
+      <div className="max-w-2xl mx-auto pt-6 md:pt-10 pb-16 md:pb-24">
         <div
           className="flex flex-col items-center mb-8 juris-rise"
           style={{ animationDelay: '60ms' }}
         >
-          <h1 className="text-3xl leading-none text-[#0a2520] font-normal tracking-tight">
+          <h1 className="text-2xl md:text-3xl leading-none text-[#0a2520] font-normal tracking-tight text-center">
             Caio, o que deseja consultar?
           </h1>
-          {readySources.length < 2 ? (
+          {attachedFiles.length === 0 ? (
             <p className="text-[13px] text-gray-400 mt-3 text-center">
               Anexe <strong>2 ou mais arquivos</strong> (.ofx, .csv, .xlsx) para iniciar a conciliação.
             </p>
           ) : (
             <p className="text-[13px] text-[#0d9488] mt-3">
-              {readySources.length} fontes prontas — clique em Enviar para iniciar a conciliação.
+              {attachedFiles.length} arquivo(s) prontos — clique em Enviar para iniciar a conciliação.
             </p>
           )}
         </div>
@@ -278,7 +247,7 @@ function Index() {
           className={`mb-4 border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition-all duration-200 ${
             isDragging
               ? 'border-[#0d9488] bg-teal-50/60'
-              : parsedSources.length > 0
+              : attachedFiles.length > 0
                 ? 'border-gray-200 bg-gray-50/40 hover:border-[#0d9488]/40'
                 : 'border-gray-200 bg-gray-50/40 hover:border-[#0d9488]/40 hover:bg-teal-50/20'
           }`}
@@ -301,50 +270,27 @@ function Index() {
         </div>
 
         {/* Attached file chips */}
-        {parsedSources.length > 0 && (
+        {attachedFiles.length > 0 && (
           <div className="flex gap-2 mb-4 flex-wrap juris-rise">
-            {parsedSources.map((p, i) => {
-              const color = SOURCE_COLORS[i % SOURCE_COLORS.length];
-              const ready = !p.needsMapping && p.transactions.length > 0;
+            {attachedFiles.map((file, i) => {
+              const color = FILE_COLORS[i % FILE_COLORS.length];
+              const ext = file.name.split('.').pop()?.toLowerCase() ?? 'unknown';
               return (
                 <div
-                  key={p.tempId}
+                  key={file.name}
                   className="flex items-center gap-2 rounded-lg px-3 py-2 text-[12.5px] border"
-                  style={{
-                    backgroundColor: `${color}15`,
-                    borderColor: `${color}40`,
-                    color,
-                  }}
+                  style={{ backgroundColor: `${color}15`, borderColor: `${color}40`, color }}
                 >
-                  <span
-                    className="w-2 h-2 rounded-full shrink-0"
-                    style={{ backgroundColor: color }}
-                  />
-                  <span className="font-medium truncate max-w-[160px]">{p.fileName}</span>
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                  <span className="font-medium truncate max-w-[160px]">{file.name}</span>
                   <span
                     className="text-[10px] font-bold px-1.5 py-0.5 rounded"
                     style={{ backgroundColor: `${color}25` }}
                   >
-                    {FORMAT_LABEL[p.format]}
+                    {EXT_LABEL[ext] ?? ext.toUpperCase()}
                   </span>
-                  {ready && (
-                    <span className="text-[10px] text-gray-500">
-                      {p.transactions.length} lanç.
-                    </span>
-                  )}
-                  {p.needsMapping && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setMappingSource(p); }}
-                      className="text-[10px] underline opacity-70 hover:opacity-100"
-                    >
-                      Mapear colunas
-                    </button>
-                  )}
-                  {p.transactions.length === 0 && !p.needsMapping && (
-                    <span className="text-[10px] opacity-70">vazio</span>
-                  )}
                   <button
-                    onClick={(e) => { e.stopPropagation(); removeSource(p.tempId); }}
+                    onClick={(e) => { e.stopPropagation(); removeFile(file.name); }}
                     className="ml-1 opacity-60 hover:opacity-100 transition-opacity"
                   >
                     <X className="w-3 h-3" />
@@ -355,7 +301,7 @@ function Index() {
           </div>
         )}
 
-        {/* Error message */}
+        {/* Error / info message */}
         {errorMsg && (
           <div className="flex items-center gap-2 mb-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[13px] text-red-700">
             <AlertCircle className="w-4 h-4 shrink-0" />
@@ -375,14 +321,11 @@ function Index() {
           }`}
           style={{ animationDelay: '160ms' }}
         >
-          <div className="px-5 pt-4 pb-1 relative">
+          <div className="px-3 md:px-5 pt-3 md:pt-4 pb-1 relative">
             <textarea
               ref={textareaRef}
               value={value}
-              onChange={(e) => {
-                setValue(e.target.value);
-                autoResize();
-              }}
+              onChange={(e) => { setValue(e.target.value); autoResize(); }}
               rows={1}
               disabled={isListening || processing}
               placeholder={
@@ -399,8 +342,8 @@ function Index() {
               }`}
             />
           </div>
-          <div className="flex items-center justify-between px-3 py-2.5">
-            <div className="flex items-center gap-1.5">
+          <div className="flex items-center justify-between px-2 md:px-3 py-2 md:py-2.5 gap-2">
+            <div className="flex items-center gap-1">
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={processing}
@@ -409,18 +352,18 @@ function Index() {
               >
                 <Paperclip className="w-[16px] h-[16px]" />
               </button>
-              <button className="flex items-center gap-1.5 h-8 px-3 rounded-full border border-gray-200 text-[12.5px] text-gray-600 hover:border-[#0d9488]/40 hover:text-[#0a2520] transition-colors">
+              <button className="hidden sm:flex items-center gap-1.5 h-8 px-3 rounded-full border border-gray-200 text-[12.5px] text-gray-600 hover:border-[#0d9488]/40 hover:text-[#0a2520] transition-colors">
                 <Sparkles className="w-3.5 h-3.5 text-[#0d9488]" />
                 Consultar
               </button>
-              <button className="w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:text-[#0d9488] hover:bg-gray-50 transition-colors" aria-label="Configurações">
+              <button className="hidden sm:flex w-8 h-8 rounded-full items-center justify-center text-gray-400 hover:text-[#0d9488] hover:bg-gray-50 transition-colors" aria-label="Configurações">
                 <Settings className="w-[16px] h-[16px]" />
               </button>
             </div>
             <div className="flex items-center gap-1.5">
               {!isListening && !processing && (
                 <>
-                  <span className="hidden sm:flex items-center gap-1 text-[11px] text-gray-400 pr-2">
+                  <span className="hidden lg:flex items-center gap-1 text-[11px] text-gray-400 pr-2">
                     <Command className="w-3 h-3" /> + Enter
                   </span>
                   <button
@@ -490,7 +433,7 @@ function Index() {
             <div className="flex items-center justify-between px-4 py-2.5">
               <div className="flex items-center gap-1.5 text-[12.5px] text-gray-500">
                 <Sparkles className="w-3.5 h-3.5 text-[#0d9488]" strokeWidth={1.8} />
-                <span>Experimente a IA Contábil</span>
+                <span>Experimente a Numera</span>
               </div>
               <button
                 onClick={() => setShowSuggestions(false)}
@@ -517,10 +460,7 @@ function Index() {
                         : 'bg-transparent text-gray-500 border-transparent hover:bg-white/70 hover:text-[#0a2520]'
                     }`}
                   >
-                    <Icon
-                      className={`w-3.5 h-3.5 ${active ? 'text-[#0d9488]' : ''}`}
-                      strokeWidth={1.8}
-                    />
+                    <Icon className={`w-3.5 h-3.5 ${active ? 'text-[#0d9488]' : ''}`} strokeWidth={1.8} />
                     {t.label}
                   </button>
                 );
