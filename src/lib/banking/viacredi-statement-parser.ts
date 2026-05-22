@@ -1,5 +1,5 @@
 import type { BankStatementEntry, ViacrediStatement } from './types';
-import { cleanText, parseBrazilianNumber, parseQuestorDate } from './questor-utils';
+import { cleanText, normalizeText, parseBrazilianNumber, parseQuestorDate } from './questor-utils';
 
 function isDateToken(value: string): boolean {
   return /^\d{2}\/\d{2}\/\d{4}$/.test(value);
@@ -10,8 +10,9 @@ function isMoneyToken(value: string): boolean {
 }
 
 function parsePeriod(tokens: string[]): { periodStart: string; periodEnd: string } {
-  const periodToken = tokens.find((token) => /^Per[ií]odo\s+/i.test(token));
-  const match = periodToken?.match(/(\d{2}\/\d{2}\/\d{4})\s+a\s+(\d{2}\/\d{2}\/\d{4})/i);
+  const periodText = tokens.join(' ');
+  const match = periodText.match(/per[ií]odo\s+(\d{2}\/\d{2}\/\d{4})\s+a\s+(\d{2}\/\d{2}\/\d{4})/i)
+    ?? periodText.match(/(\d{2}\/\d{2}\/\d{4})\s+a\s+(\d{2}\/\d{2}\/\d{4})/i);
   const periodStart = match ? parseQuestorDate(match[1]) : null;
   const periodEnd = match ? parseQuestorDate(match[2]) : null;
 
@@ -25,8 +26,8 @@ function parsePeriod(tokens: string[]): { periodStart: string; periodEnd: string
 function parseMetadata(
   tokens: string[],
 ): Pick<ViacrediStatement, 'customerName' | 'bankCode' | 'agency' | 'accountNumber'> {
-  const customerToken = tokens.find((token) => token.startsWith('Nome:'));
-  const bankToken = tokens.find((token) => token.includes('Cooperativa:'));
+  const customerToken = tokens.find((token) => normalizeText(token).startsWith('nome:'));
+  const bankToken = tokens.find((token) => normalizeText(token).includes('cooperativa:'));
 
   const customerName = customerToken?.replace(/^Nome:\s*/i, '').trim() || undefined;
   const bankCode = bankToken?.match(/Banco:\s*([^|]+)/i)?.[1]?.trim();
@@ -95,8 +96,8 @@ function parseEntries(tokens: string[], startIndex: number): BankStatementEntry[
 }
 
 export function parseViacrediStatementTextTokens(tokens: string[]): ViacrediStatement {
-  const joined = tokens.join(' ');
-  if (!joined.includes('VIACREDI')) {
+  const joined = normalizeText(tokens.join(' '));
+  if (!joined.includes('viacredi')) {
     throw new Error('O PDF informado nao parece ser um extrato Viacredi.');
   }
 

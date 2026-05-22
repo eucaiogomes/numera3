@@ -27,29 +27,49 @@ function ensurePromiseWithResolvers() {
   });
 }
 
+async function loadPdfJs() {
+  try {
+    return await import('pdfjs-dist/legacy/build/pdf.mjs');
+  } catch {
+    return await import('pdfjs-dist');
+  }
+}
+
+function configurePdfWorker(pdfjsLib: Awaited<ReturnType<typeof loadPdfJs>>) {
+  const workerPaths = [
+    'pdfjs-dist/legacy/build/pdf.worker.min.mjs',
+    'pdfjs-dist/build/pdf.worker.min.mjs',
+  ];
+
+  for (const workerPath of workerPaths) {
+    try {
+      if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(workerPath, import.meta.url).href;
+      }
+      return;
+    } catch {
+      // Try the next worker path.
+    }
+  }
+}
+
 export async function extractTokensFromPdf(fileOrBuffer: File | ArrayBuffer): Promise<string[]> {
   ensurePromiseWithResolvers();
 
-  const pdfjsLib = await import('pdfjs-dist');
-
-  try {
-    if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
-      pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-        'pdfjs-dist/build/pdf.worker.min.mjs',
-        import.meta.url,
-      ).href;
-    }
-  } catch {
-    // Fallback: try without explicitly setting worker source
-    try {
-      pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
-    } catch {
-      // Continue anyway
-    }
-  }
+  const pdfjsLib = await loadPdfJs();
+  configurePdfWorker(pdfjsLib);
 
   const buffer = fileOrBuffer instanceof File ? await fileOrBuffer.arrayBuffer() : fileOrBuffer;
-  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
+  const data = buffer.slice(0);
+  const pdf = await pdfjsLib.getDocument({
+    data: new Uint8Array(data),
+    disableFontFace: true,
+    isEvalSupported: false,
+    isOffscreenCanvasSupported: false,
+    isImageDecoderSupported: false,
+    useSystemFonts: true,
+    useWorkerFetch: false,
+  }).promise;
   const tokens: string[] = [];
 
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
