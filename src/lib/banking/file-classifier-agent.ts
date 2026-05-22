@@ -49,7 +49,9 @@ async function classifyFile(file: File): Promise<ClassifiedFile> {
       }
       return { kind: 'checking_statement', file, result: parsed.statement };
     } catch (e) {
-      return { kind: 'unknown', file, error: e instanceof Error ? e.message : 'Falha ao ler PDF' };
+      const errMsg = e instanceof Error ? e.message : 'Falha ao ler PDF';
+      console.error(`[File Classifier] Erro ao processar PDF ${file.name}:`, errMsg, e);
+      return { kind: 'unknown', file, error: errMsg };
     }
   }
 
@@ -151,6 +153,15 @@ export async function runFileClassifierAgent(
     else if (r.kind === 'investment_statement') summary.investmentStatements.push(r);
     else summary.unknown.push(r as ClassifiedFile & { kind: 'unknown' });
   }
+
+  console.log('[File Classifier Summary]', {
+    totalFiles: results.length,
+    trialBalance: summary.trialBalance ? 'found' : 'missing',
+    ledger: summary.ledger ? 'found' : 'missing',
+    checkingStatements: summary.checkingStatements.length,
+    investmentStatements: summary.investmentStatements.length,
+    unknown: summary.unknown.length,
+  });
 
   return summary;
 }
