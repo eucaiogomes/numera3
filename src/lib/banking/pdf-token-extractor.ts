@@ -1,4 +1,5 @@
 import pdfWorkerLibUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
+import type * as PdfWorkerModule from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs';
 
 type PromiseWithResolvers<T> = {
   promise: Promise<T>;
@@ -39,6 +40,17 @@ async function loadPdfJs() {
 
 let workerObjectUrl: string | null = null;
 
+function shouldUseMainThreadPdfWorker(): boolean {
+  if (typeof navigator === 'undefined') return false;
+
+  const userAgent = navigator.userAgent;
+  const platform = navigator.platform;
+  const isApplePlatform = /Mac|iPhone|iPad|iPod/i.test(platform);
+  const isSafari = /Safari/i.test(userAgent) && !/Chrome|Chromium|CriOS|FxiOS|Edg/i.test(userAgent);
+
+  return isApplePlatform && isSafari;
+}
+
 function createPdfWorkerUrl(): string {
   if (workerObjectUrl) return workerObjectUrl;
 
@@ -69,7 +81,14 @@ await import(${JSON.stringify(new URL(pdfWorkerLibUrl, globalThis.location?.href
   return workerObjectUrl;
 }
 
-function configurePdfWorker(pdfjsLib: Awaited<ReturnType<typeof loadPdfJs>>) {
+async function configurePdfWorker(pdfjsLib: Awaited<ReturnType<typeof loadPdfJs>>) {
+  if (shouldUseMainThreadPdfWorker()) {
+    const workerModule = await import('pdfjs-dist/legacy/build/pdf.worker.min.mjs') as typeof PdfWorkerModule;
+    (globalThis as typeof globalThis & { pdfjsWorker?: typeof PdfWorkerModule }).pdfjsWorker = workerModule;
+    pdfjsLib.GlobalWorkerOptions.workerPort = null;
+    return;
+  }
+
   if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
     pdfjsLib.GlobalWorkerOptions.workerSrc = createPdfWorkerUrl();
   }
@@ -79,7 +98,7 @@ export async function extractTokensFromPdf(fileOrBuffer: File | ArrayBuffer): Pr
   ensurePromiseWithResolvers();
 
   const pdfjsLib = await loadPdfJs();
-  configurePdfWorker(pdfjsLib);
+  await configurePdfWorker(pdfjsLib);
 
   const buffer = fileOrBuffer instanceof File ? await fileOrBuffer.arrayBuffer() : fileOrBuffer;
   const data = buffer.slice(0);
